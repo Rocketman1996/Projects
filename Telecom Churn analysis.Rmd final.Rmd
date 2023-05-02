@@ -1,0 +1,659 @@
+---
+Title: "Telecom Churn Analysis"
+Author: "MehulSingh Rao"
+Date: "2023-04-05"
+Output:
+  pdf_document: default
+output: pdf_document
+---
+
+## Introduction
+
+Customer churn, or customer attrition, is a significant loss for businesses. This metric is especially important for subscription-based services, such as telecommunications companies. In this project, we aim to conduct a churn analysis using data sourced from IBM sample data sets. We will leverage the R programming language to identify key variables associated with customer churn.
+
+## Tasks
+
+To achieve this objective, we will undertake the following tasks:
+
+-   Load the data and relevant R libraries.
+-   Preprocess the data using various cleaning and recoding techniques.
+-   Generate descriptive statistics visualizations to explore the data.
+-   Fit model using commonly-used statistical classification methods for churn analysis with random forest analysis.
+-   Visualize selected variables based on our modeling techniques to gain additional insights.
+
+## Load Necesssary Packages
+
+We'll load the necessary package for data cleaning
+
+```{R packages, message=FALSE, warning=FALSE}
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(readxl)
+library(ggplot2)
+library(gridExtra)
+library(tidyverse)
+library(tibble)
+library(caret)
+library(randomForest)
+```
+
+## Loading data
+
+```{R data}
+dat <- read_excel("C:/Users/asus/Downloads/Customer churn dataset/Telecom Churn Rate Dataset.xlsx")
+head(dat)
+```
+
+## Checking data
+
+```{r}
+
+str(dat)
+```
+
+## The dataset contains information about various customer attributes and their subscription services, which can be used to predict customer churn.
+
+### Objective: Predict customer churn based on customer attributes and their subscription services.
+
+### Problem type: Classification (churn: Yes or No)
+
+Let's break down the features in the dataset:
+
+1.  Churn: Whether the customer churned or not (Yes or No) - ***Target variable***
+
+    ***Categorical Variables***
+
+2.  SeniorCitizen: Whether the customer is a senior citizen or not (Yes or No)
+
+3.  Partner: Whether the customer has a partner or not (Yes or No)
+
+4.  Dependents: Whether the customer has dependents or not (Yes or No)
+
+5.  PhoneService: Whether the customer has a phone service or not (Yes or No)
+
+6.  MultipleLines: Whether the customer has multiple lines or not (Yes or No)
+
+7.  OnlineSecurity: Whether the customer has online security or not (Yes or No)
+
+8.  OnlineBackup: Whether the customer has online backup or not (Yes or No)
+
+9.  DeviceProtection: Whether the customer has device protection or not (Yes or No)
+
+10. TechSupport: Whether the customer has tech support or not (Yes or No)
+
+11. StreamingTV: Whether the customer has streaming TV or not (Yes or No)
+
+12. StreamingMovies: Whether the customer has streaming movies or not (Yes or No)
+
+13. PaperlessBilling: Whether the customer has paperless billing or not (Yes or No)
+
+14. Gender: The gender of the customer (Male or Female)
+
+15. Contract: The contract term of the customer (Month-to-month, One year, Two year)
+
+16. InternetService: The customer's internet service provider (DSL, Fiber optic, No)
+
+17. PaymentMethod: The customer's payment method (Electronic check, Mailed check, Bank transfer (automatic), Credit card (automatic))
+
+    ***Numerical Variables***
+
+18. MonthlyCharges: The amount charged to the customer monthly
+
+19. TotalCharges: The total amount charged to the customer
+
+20. Tenure: Number of months the customer has stayed with the company
+
+21. NumAdminTickets: Number of administrative tickets raised by the customer
+
+22. NumTechTickets: Number of technical tickets raised by the customer.
+
+## Data Cleaning
+
+```{r}
+# customerID has no significance so we are dropping this column
+
+dat1 <- subset(dat, select = -customerID)
+head(dat1)
+```
+
+```{r}
+# Handling Missing, Duplicate Data and null data
+
+sum(duplicated(dat1))
+colSums(is.na(dat1) | dat1 == "")
+```
+
+```{r}
+# There are 17 Duplicate rows & 11 missing values in TotalCharges Column.
+# The number of Duplicate rows & missing values is relatively small compared 
+# to the size of the dataset. Therefore, we have decided to remove these missing 
+# values from our analysis.
+
+# Let's call it datc.
+
+datc <- dat1 %>% 
+  na.omit(dat1) %>% 
+  distinct()
+sum(duplicated(datc))
+colSums(is.na(datc) | datc == "")
+
+```
+
+```{r}
+
+# Checking Data structure 
+
+summary(dat)
+```
+
+```{r}
+# The "SeniorCitizen" variable in the dataset is currently coded as a binary variable with
+# values of "0" or "1". This coding scheme is not intuitive and can be difficult to interpret. 
+
+# To make our analysis easier and more understandable, we can recode this variable using a more   
+# intuitive labeling scheme, such as "yes" and "no".
+
+# The "MultipleLines" variable is related to the "PhoneService" variable.
+
+# If "PhoneService" is set to "No", then "MultipleLines" is also automatically set to "No". 
+
+# To simplify our graphics and modeling, we can change the "No phone service" response in the 
+# "MultipleLines" variable to "No".
+
+# Same goes with "No internet service"
+
+datrecode <- datc %>% 
+mutate(SeniorCitizen = if_else(SeniorCitizen == 0, "No", "Yes")) %>% 
+mutate(MultipleLines = if_else(MultipleLines == "No phone service", "No", MultipleLines)) %>% 
+mutate(across(starts_with("Online") | starts_with("Device") | starts_with("Tech") | 
+                  
+    starts_with("Streaming"), ~if_else(. == "No internet service", "No", .)))
+head(datrecode)
+
+```
+
+# Visualizations
+
+***Let's take a look at numerical Features***
+
+```{R Viz1, message=FALSE, warning=FALSE}
+
+# Histogram of Tenure:
+
+p1 <- ggplot(datrecode, aes(x = tenure)) +
+  geom_histogram(binwidth = 5, color = "white", fill = "#FFA07A") +
+  labs(title = "Distribution of Tenure", 
+       x = "Tenure (Months)", 
+       y = "Frequency") +
+  scale_x_continuous(limits = c(0, 80), breaks = seq(0, 80, 5)) +
+  theme_minimal()
+
+# Histogram of TotalCharges
+p2 <- ggplot(datrecode, aes(x = TotalCharges)) + 
+  geom_histogram(binwidth = 200, fill = "#69b3a2", color = "black") +
+  scale_x_continuous(breaks = seq(0, 9000, by = 1000)) +
+  labs(x = "Total Charges", y = "Frequency", 
+       title = "Histogram of Total Charges")
+
+# Histogram of MonthlyCharges
+p3 <- ggplot(data = datrecode, aes(x = MonthlyCharges)) +
+  geom_histogram(binwidth = 10, color = "white", fill = "#FFA07A") +
+  labs(title = "Distribution of Monthly Charges", 
+       x = "Monthly Charges ($)", 
+       y = "Frequency") +
+  scale_x_continuous(limits = c(0, 130), breaks = seq(0, 150, 20)) +
+  theme_minimal()
+
+grid.arrange(p1, p2, p3, ncol = 2)
+
+```
+
+-   Maximum frequency (number of customers) is observed in the 0-5 and 65-70 months tenure ranges, whereas the average frequency for intermediate ranges lies between 250 and 400 customers per range.
+
+-   The "TotalCharges" graph depicts the distribution of the charged amount to customers, there is a down trend of decreasing frequency and increasing total charges.
+
+-   The histogram of "Monthly Charges" shows that the majority of customers have monthly charges between 20-40 dollars and a normal distribution around 80 dollars.
+
+```{r message=FALSE, warning=FALSE}
+# Let's look at numAdminTickets and numTechTickets 
+
+# histogram of numAdminTickets
+
+p4 <- ggplot(data = datrecode, aes(x = numAdminTickets)) +
+  geom_histogram(binwidth = 1, color = "white", fill = "#FFA07A") +
+geom_text(aes(y = ..count.. -400, label = paste0(round(prop.table(..count..), 4)*100, "%")),
+          stat = "count")+labs(title = "Distribution numAdminTickets", 
+       x = "numAdminTickets", 
+       y = "Frequency") +
+  scale_x_continuous(limits = c(-1, 6), breaks = seq(0, 5, 1)) +
+  theme_minimal()
+
+# histogram of numTechtickets
+
+p5 <- ggplot(data = datrecode, aes(x = numTechTickets)) +
+  geom_histogram(binwidth = 1, color = "white", fill = "#FFA07A") +
+geom_text(aes(y = ..count.. -400, label = paste0(round(prop.table(..count..), 4)*100, "%")), 
+          stat = "count")+labs(title = "Distribution numTechTickets", 
+       x = "numTechTickets", 
+       y = "Frequency") +
+  scale_x_continuous(limits = c(-1, 10), breaks = seq(0, 10, 1)) +
+  theme_minimal()
+
+grid.arrange(p4,p5,ncol = 1)
+
+```
+
+-   In the numAdminTickets graph, it appears that most customers have not raised any tickets.
+
+-   The highest number of admin tickets raised by a customer is 5, though this may not be representative of every customer's experience.
+
+-   Similarly, in the numTechtickets graph, the maximum number of tech tickets raised by a customer is 9, but this may not be the case for all customers.
+
+***Let's take a look at Categorical Features***
+
+```{r viz2, message=FALSE, warning=FALSE}
+
+# Bar graph of Contract
+
+p9 <-  ggplot(datrecode, aes(x = Contract, fill = Contract)) +
+geom_bar() +geom_text(aes(y = ..count.. -400, label = paste0(round(prop.table(..count..),
+                                                                   1)*100, "%")), stat = "count")+labs(title = "Distribution of Contract Type",
+x = "Contract Type",
+y = "Count") +
+scale_fill_brewer(palette = "Set2") +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Bar graph of gender
+
+colors <- c("#0072B2", "#E69F00")
+
+p10 <- ggplot(data = datrecode, aes(x = gender))+ 
+  geom_bar(aes(fill = gender))+ 
+geom_text(aes(y = ..count.. -500, label = paste0(round(prop.table(..count..),4)* 100, '%')), 
+            stat = "count", position = position_stack(vjust = 0.5))+ xlab("Gender") + ylab("Count") + ggtitle("Customer Gender Distribution")+ 
+  theme()
+
+
+# Arrange plots in a grid
+grid.arrange(p9, p10)
+
+```
+
+-   The most common contract type is Month-to-Month, followed by Two Year and One Year contracts.
+
+-   The bar graph indicates an almost equal distribution between genders.
+
+```{r viz3, message=FALSE, warning=FALSE}
+
+# Bar graph of InternetService 
+
+p11 <- ggplot(datrecode, aes(x = InternetService, fill = InternetService)) +
+  geom_bar() +
+  labs(title = "Distribution of Internet Service", 
+       x = "Internet Service", 
+       y = "Count") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Bar graph of PaymentMethod 
+
+p12 <- ggplot(datrecode, aes(x = PaymentMethod, fill = PaymentMethod)) +
+  geom_bar() +
+  labs(title = "Distribution of Payment Method", 
+       x = "Payment Method", 
+       y = "Count") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Arrange plots in a grid
+grid.arrange(p11, p12, nrow = 1,ncol = 2)
+
+
+```
+
+-   Looking at the bar graph for "Internet Service," we can see that **Fiber optic** is the top choice among internet users, followed by DSL and a small percentage of users not utilizing any internet service.
+
+-   Check it out - **Electronic Check** is by far the most popular payment method, with the other three options lagging behind by almost 25%. Looks like we're moving towards a more digital world!
+
+```{r viz 5, message=FALSE, warning=FALSE}
+
+# Plotting Bar graphs of SeniorCitizen, Partner, Dependents, PhoneService,MultipleLines 
+# and OnlineSecurity.
+
+p14 <- ggplot(datrecode, aes(x = SeniorCitizen)) + geom_bar() +
+  geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("SeniorCitizen")
+ 
+
+p15 <- ggplot(datrecode, aes(x = Partner)) + geom_bar() +
+  geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("Partner")
+
+p16 <- ggplot(datrecode, aes(x = Dependents)) + geom_bar() +
+  geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("Dependents")
+
+p17 <- ggplot(datrecode, aes(x = PhoneService)) + geom_bar() +
+  geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("PhoneService")
+
+p18 <- ggplot(datrecode, aes(x = MultipleLines)) + geom_bar() +
+  geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("MultipleLines")
+
+p19 <- ggplot(datrecode, aes(x = OnlineSecurity)) + geom_bar() +
+  geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("OnlineSecurity")
+
+
+# Arrange plots in a grid
+grid.arrange(p14,p15,p16,p17,p18,p19, nrow = 2, ncol = 3)
+```
+
+-   The majority of people are not senior citizens.
+-   The number of users with partners and without partners is almost the same.
+-   About 70% of users have dependents.
+-   More than 90% of users have phone service, and the majority of them have a single line.
+-   Approximately 70% of users are vulnerable (not secured).
+
+```{r viz 6, message=FALSE, warning=FALSE}
+
+# Bar graphs of OnlinBackup, DeviceProtection, TechSupport, StreamingTV,
+# StreamingMovies and paperLessbill.
+
+p20 <- ggplot(datrecode, aes(x = OnlineBackup)) + geom_bar() +
+  geom_text(aes(y = ..count.. -1000, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count')+ ggtitle("OnlineBackup")
+
+
+p21 <- ggplot(datrecode, aes(x = DeviceProtection)) + geom_bar()+
+  geom_text(aes(y= ..count.. -400, 
+                           label = paste0(round(prop.table(..count..),4)*100, "%")), 
+                           stat = "count") +ggtitle("DeviceProtection")
+
+
+
+p22 <- ggplot(datrecode, aes(x = TechSupport)) + geom_bar()+ 
+   geom_text(aes(y= ..count.. -400, 
+                           label = paste0(round(prop.table(..count..),4)*100, "%")), 
+                           stat = "count")  +ggtitle("TechSupport")
+
+
+p23 <- ggplot(datrecode, aes(x = StreamingTV)) + geom_bar() +
+  geom_text(aes(y= ..count.. -400, 
+                           label = paste0(round(prop.table(..count..),4)*100, "%")),
+            stat = "count") + ggtitle("StreamingTV")
+
+p24 <- ggplot(datrecode, aes(x = StreamingMovies)) +
+  geom_bar() +geom_text(aes(y= ..count.. -400, 
+                           label = paste0(round(prop.table(..count..),4)*100, "%")),
+                        stat = "count") + ggtitle("StreamingMovies")
+
+
+p25 <- ggplot(datrecode, aes(x = PaperlessBilling)) + 
+  geom_bar() +geom_text(aes(y= ..count.. -400, 
+                           label = paste0(round(prop.table(..count..),4)*100, "%")),
+                        stat = "count") + ggtitle("PaperlessBilling")
+
+
+grid.arrange(p20,p21,p22,p23,p24,p25, nrow = 2, ncol = 3)
+
+```
+
+-   Most customers(Above 60%) have OnlinBackup, DeviceProtection, TechSupport, StreamingTV and StreamingMovies. ***It means these services are very popular among the population and a must have in any company.***
+
+```{r viz4, message=FALSE, warning=FALSE}
+
+# How many people has chuned from our data 
+
+p13 <- ggplot(datrecode, aes(x = Churn)) +
+  geom_bar()+ geom_text(aes(y = ..count.. -400, 
+                            label = paste0(round(prop.table(..count..),4)*100, '%')), 
+                        stat = 'count') + ggtitle("Churn")+
+  theme(plot.title = element_text(hjust = .5))
+p13
+```
+
+-   The graph shows the distribution of customer churn, with approximately 73% of customers remaining active and 27% of customers churning.
+
+# Statistical Modeling
+
+## Supervised
+
+### Classification
+
+#### Random Forest
+
+-   Note : ***When there is a difference in the number of customers in each class, such as fewer customers churning in this case, the model may tend to predict the majority class (in this instance, "No" for not churned) more often, as this leads to higher accuracy.***
+
+```{r warning=FALSE}
+library(tibble)
+library(caret)
+set.seed(123)
+trainIndex <- createDataPartition(datrecode$Churn, p = .7, list=FALSE, times=1)
+trainSet <- datrecode[trainIndex,]
+testSet <- datrecode[-trainIndex,]
+
+
+Model1 <- randomForest(as.factor(Churn) ~ ., data = trainSet,mtry = 4, ntree = 400, 
+                       importance= TRUE)
+
+Model1
+
+importance(Model1)
+
+```
+
+-   Regarding the class imbalance concern, the class error for "No" (not churned) is 0.0795 (7.95%), while the class error for "Yes" (churned) is 0.3264 (32.64%). This indicates that the model is indeed better at predicting the majority class (not churned), but it's still able to predict the minority class (churned) to some extent.
+
+```{r}
+feature_importance <- importance(Model1)
+ top_10_features <- sort(feature_importance[, "MeanDecreaseAccuracy"], 
+                         decreasing = TRUE, index.return = TRUE)$ix[1:10]
+ feature_names <- rownames(feature_importance)[top_10_features]
+ top_10_importance_values <- feature_importance[top_10_features, 
+              c("No", "Yes", "MeanDecreaseAccuracy", "MeanDecreaseGini")]
+ data.frame(Feature = feature_names, top_10_importance_values)
+```
+
+# Now let's test our Model by
+
+Using test set 1. Confusion Matrix
+
+```{r}
+
+prediction <- predict(Model1,testSet)
+
+confusion_matrix <- confusionMatrix(as.factor(prediction), as.factor(testSet$Churn))
+confusion_matrix
+
+```
+
+-   Based on the confusion matrix and the performance metrics, the random forest model exhibits an accuracy of 85.69% on the test set, with a sensitivity of 91.72% and specificity of 69.00%.
+
+-   The model performs better in identifying the 'No' class compared to the 'Yes' class. The balanced accuracy of 80.36% indicates that the model has a relatively good overall performance.
+
+# Let's Plot the graphs based on our Models
+
+-   Categorical Variables VS plot churn rate
+
+```{r message=FALSE, warning=FALSE}
+# Bar Graph of Churn VS Contract type 
+
+p26 <- ggplot(datrecode, aes(x = Churn, fill = Contract)) +
+  geom_bar(position = "dodge") +
+geom_text(aes(y = ..count.., label = paste0(round(prop.table
+                                  (..count.. / sum(..count..)), 4) * 100, "%")),
+            stat = "count", position = position_dodge(width = 0.9), vjust = -0.5) +
+  labs(title = "Churn vs Contract", x = "Churn", y = "Count")
+p26
+```
+
+-   From this plot it's clear that ***Month to month*** contract type is responsible for the churn followed by one year and very small proportion of two year.
+
+```{r message=FALSE, warning=FALSE}
+
+# bar graph of Internet Service Vs Churn
+
+p27 <- ggplot(datrecode, aes(x = Churn, fill = InternetService)) +
+  geom_bar(position = "dodge") + 
+  geom_text(aes(y = ..count.., label = paste0(round(prop.table
+                        (..count.. / sum(..count..)), 4) * 100, "%")),
+        stat = "count", position = position_dodge(width = 0.9), vjust = -0.5) +
+  labs(title = "Churn vs Internet Service", x = "Churn", y = "Count")
+p27
+```
+
+-   About 18% of the cutomers with ***Fiber Optics*** have churned followed by 6.5% for DSL.
+
+```{r message=FALSE, warning=FALSE}
+
+# Bar graph of  Churn vs Streaming Movies
+
+p28 <- ggplot(datrecode, aes(x = Churn, fill = StreamingMovies)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Churn vs Streaming Movies", x = "Churn", y = "Count")
+
+p29 <- ggplot(datrecode, aes(x = Churn, fill = StreamingTV)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Churn vs Streaming TV", x = "Churn", y = "Count")
+
+p30 <- ggplot(datrecode, aes(x = Churn, fill = OnlineSecurity)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Churn vs Online Security", x = "Churn", y = "Count")
+
+p31 <- ggplot(datrecode, aes(x = Churn, fill = TechSupport)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Churn vs Tech Support", x = "Churn", y = "Count")
+
+grid.arrange(p28,p29,p30,p31, ncol = 2, nrow =2)
+
+```
+
+-   Mostly in *No* cases in Streaming Movies, Steaming TV, Online Security and Tech Support are customers Churned the Most.
+
+### Numerical Variables VS Churn
+
+```{r message=FALSE, warning=FALSE}
+# Now we'll check them against Churn Aspect to get if there's any good insight
+
+# Tenure & Churn:
+
+p6 <- ggplot(datrecode, aes(x = tenure, fill = Churn)) +
+  geom_histogram(binwidth = 5, color = "white", position = "identity", alpha = 0.7) +
+  labs(title = "Distribution of Tenure by Churn", 
+       x = "Tenure (Months)", 
+       y = "Frequency") +
+  scale_x_continuous(limits = c(0, 80), breaks = seq(0, 80, 5)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No" = "#FFA07A", "Yes" = "#69b3a2"))
+
+
+# TotalCharges & Churn :
+  
+p7 <- ggplot(datrecode, aes(x = TotalCharges, fill = Churn)) + 
+  geom_histogram(binwidth = 200, color = "white", position = "identity", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(0, 9000, by = 1000)) +
+  labs(x = "Total Charges", y = "Frequency", 
+       title = "Histogram of Total Charges by Churn") +
+  theme_minimal() +
+  scale_fill_manual(values = c("No" = "#FFA07A", "Yes" = "#69b3a2"))
+
+# MonthlyCharges & Churn :
+  
+p8 <- ggplot(data = datrecode, aes(x = MonthlyCharges, fill = Churn)) +
+  geom_histogram(binwidth = 10, color = "white", position = "identity", alpha = 0.7) +
+  labs(title = "Distribution of Monthly Charges by Churn", 
+       x = "Monthly Charges ($)", 
+       y = "Frequency") +
+  scale_x_continuous(limits = c(0, 130), breaks = seq(0, 150, 20)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No" = "#FFA07A", "Yes" = "#69b3a2"))
+
+
+
+grid.arrange(p6,p7,p8, ncol = 1)
+```
+
+-   Churn rate decreases with increasing tenure, implying ***long-term customers are more satisfied and less likely to churn.***
+
+-   Higher churn rate for customers with ***total charges \< 1,000, while negligible for \> 3,000, suggesting greater commitment and satisfaction for higher-spending customers.***
+
+-   Customers with ***monthly charges between 60 and 100 exhibit higher churn rates***, possibly due to unmet value expectations or competition in this price range.
+
+```{r message=FALSE, warning=FALSE}
+# Churn vs numTechTickets
+p32 <- ggplot(datrecode, aes(x = Churn, y = numTechTickets)) +
+  geom_boxplot() + scale_y_continuous(limits = c(0,9), breaks = seq(0, 9, 1))+
+  theme_minimal() +
+  labs(title = "Churn vs NumTechTickets", x = "Churn", y = "Number of Technical Tickets")
+p32
+```
+
+-   The boxplot suggests that customers who churned generally had more technical tickets than those who did not churn, and the distribution of the number of technical tickets for churned customers is more diverse.
+
+```{r message=FALSE, warning=FALSE}
+
+library(ggplot2)
+
+# Bar Plot of numTechtickets vs Churn
+
+p34 <- ggplot(data = datrecode, aes(x = tenure, y = numTechTickets, color = Churn)) +
+  geom_point() +
+  labs(title = "Tenure vs. Number of Tech Tickets",
+       x = "Tenure",
+       y = "Number of Tech Tickets") +
+  scale_x_continuous(breaks = seq(0, 100, 10)) + # Updated interval for x-axis
+  scale_y_continuous(breaks = seq(0, 10, 1)) + # Updated interval and range for y-axis
+  theme_minimal()
+p34
+
+```
+
+-   Customers with a short tenure who raise fewer tech tickets are more likely to churn. Similarly, customers with a longer tenure who raise more than three tech tickets are also more likely to churn.
+
+-   Customers with a tenure greater than 30 and who raise fewer than three tech tickets are much less likely to churn.
+
+
+
+
+
+
+
+
+
+
+
+
+
+# In conclusion, the analysis of customer churn reveals several key findings:
+
+1. The box plot reveals that customers who churned generally had more technical tickets than those who did not churn, and the distribution of technical tickets for churned customers is more diverse, highlighting the impact of technical issues on customer retention.
+
+2. Churn rate decreases with increasing tenure, implying that long-term customers are more satisfied and less likely to churn. This emphasizes the importance of nurturing long-term relationships with customers.
+
+3. Short-tenured customers with fewer tech tickets (1 or 2) and long-tenured customers with more than three tech tickets are more likely to churn. This suggests that both initial service issues and ongoing problems contribute to customer attrition.
+
+4. Customers with a tenure greater than 30 months and fewer than three tech tickets are much less likely to churn, indicating that long-term satisfaction and minimal service issues help retain customers.
+
+5. Monthly charges between 60 and 100 result in higher churn rates, possibly due to unmet value expectations or competition in this price range. This highlights the need for businesses to focus on providing competitive pricing and value.
+
+6. A higher churn rate is observed for customers with total charges below 1,000, while negligible churn is seen for customers with charges above 3,000. This implies that higher-spending customers tend to be more committed and satisfied with the service.
+
+7. Month-to-month contract types contribute to the highest churn rates, followed by one-year contracts, with a very small proportion of churn for two-year contracts. This suggests that customers with longer contracts may feel more secure and satisfied with the service.
+
+8. Approximately 18% of customers with Fiber Optics churned, followed by 6.5% for DSL customers, indicating that internet service type can also influence customer satisfaction and retention.
+
+9. Customers who do not have streaming movies, streaming TV, online security, and tech support services are more likely to churn. This suggests that the absence of these features may lead to dissatisfaction and ultimately, customer attrition.
+
+***To reduce churn rates, businesses should focus on improving customer service, offering competitive pricing and value, providing desired features in service packages, and fostering long-term customer relationships.***
